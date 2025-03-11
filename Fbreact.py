@@ -32,13 +32,15 @@ class MachineLikerBot:
                 session = requests.Session()
                 response = session.get(LOGIN_URL, headers=HEADERS, cookies={"cookie": fb_cookie}, timeout=10)
 
-                if "success" in response.text:
-                    user_id = re.search(r'"id":"(\d+)"', response.text).group(1)
+                # Check if response contains user ID
+                user_id_match = re.search(r'"id":"(\d+)"', response.text)
+                if user_id_match:
+                    user_id = user_id_match.group(1)
                     print(Fore.GREEN + f"[LOGIN SUCCESS] Logged in as User ID: {user_id}")
                     self.sessions.append(session)
                     return session
                 elif "Invalid session" in response.text or response.status_code == 403:
-                    print(Fore.RED + f"[LOGIN FAILED] Cookie expired or invalid. Removing from list.")
+                    print(Fore.RED + "[LOGIN FAILED] Cookie expired or invalid. Removing from list.")
                     return None
                 else:
                     print(Fore.YELLOW + f"[WARNING] Unexpected response on login attempt {attempt}. Retrying...")
@@ -66,6 +68,24 @@ class MachineLikerBot:
             fb_cookie = input(f"Enter cookie for Account {i + 1}: ").strip()
             if fb_cookie:
                 self.cookies[f"cookie_{i + 1}"] = fb_cookie
+
+    def fetch_latest_post_url(self, session):
+        """Automatically fetch the latest Facebook post URL."""
+        try:
+            print(Fore.YELLOW + "[INFO] Fetching latest post URL...")
+            response = session.get("https://m.facebook.com/me", headers=HEADERS, timeout=10)
+
+            post_match = re.search(r'href="(/story.php\?story_fbid=\d+&id=\d+)"', response.text)
+            if post_match:
+                latest_post = "https://m.facebook.com" + post_match.group(1)
+                print(Fore.CYAN + f"[INFO] Latest post found: {latest_post}")
+                return latest_post
+            else:
+                print(Fore.RED + "[ERROR] No recent posts found. Enter manually.")
+                return input(Fore.CYAN + "Enter the Facebook post URL manually: ")
+        except requests.RequestException as e:
+            print(Fore.RED + f"[ERROR] Failed to fetch post: {e}")
+            return input(Fore.CYAN + "Enter the Facebook post URL manually: ")
 
     def select_reactions(self):
         """Allow the user to choose reactions to send."""
@@ -148,8 +168,10 @@ class MachineLikerBot:
             print(Fore.RED + "[ERROR] No valid sessions remaining. Exiting...")
             return
 
-        # Get post URL and reaction type
-        self.post_url = input(Fore.CYAN + "[INPUT] Enter the Facebook post URL to boost reactions: ")
+        # Fetch latest post URL automatically
+        self.post_url = self.fetch_latest_post_url(self.sessions[0])
+
+        # Select reactions
         self.select_reactions()
 
         # Start boosting reactions
